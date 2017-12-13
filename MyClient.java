@@ -1,11 +1,16 @@
+import java.math.BigInteger;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.util.Random;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.concurrent.ThreadLocalRandom;
 
 class MyClient {
     private int id;
+
+    private BigInteger x;
+    private BigInteger y;
 
     private String localrmi;
     private String username;
@@ -32,27 +37,26 @@ class MyClient {
         }
     }
 
-    public int generateKey(LocalInterface stub) throws RemoteException{
+    private int[] generateKey(LocalInterface stub) throws RemoteException{
         //get x, g, p values from server whilst also registering for an id
         int[] values = stub.register();
         this.id = values[0];
-        int x = values[1];
-        int g = values[2];
-        int p = values[3];
+        Integer g = values[1];
+        Integer p = values[2];
+
+        x = stub.getX(id);
 
         //generate a random b value
         int b = ThreadLocalRandom.current().nextInt(9);
 
-        //compute y and send it to the server
-        int y = (int) (Math.pow(g,b) % p);
-        stub.postY(id,y);
-
-        //compute key and return it
-        int key = (int) (Math.pow(x,b) % p);
-        return key;
+        //compute y
+        y = new BigInteger(g.toString()).pow(b).mod(new BigInteger(p.toString()));
+        
+        int[] output = {b, p};
+        return output;
     }
 
-    public String decode(String input, int key){
+    private String decode(String input, int key){
         //convert input to char[] and produce and output array
         char[] chars = input.toCharArray();
         char[] message = new char[chars.length];
@@ -76,17 +80,40 @@ class MyClient {
     }
 
     //calls decode twice
-    public String doubleDecode(String input, int key){
-        return decode(decode(input, key), key);
+    private String fullDecode(String input, int key){
+        return clean(decode(decode(input, key), key));
     }
 
-    public void getCipher(int key, LocalInterface stub){
+    private String clean(String input){
+        ArrayDeque<Character> chars = new ArrayDeque<Character>();
+
+        for(Character c : input.toCharArray()){
+            chars.add(c);
+        }
+
+        while(chars.peekLast().equals('Z')){
+            chars.pollLast();
+        }
+
+        char[] out = new char[chars.size()];
+        
+        for(int i = 0; i < out.length; i++){
+            out[i] = (char) chars.pollFirst();
+        }
+
+        return new String(out);
+    }
+
+    private void getCipher(int[] vals, LocalInterface stub){
+        int b = vals[0];
+        Integer p = vals[1];
+        //compute key and return it
+        int key = x.pow(b).mod(new BigInteger(p.toString())).intValue();
         try {
-            //if failure then try again
-            String response = stub.getCipher(id, key, username);
+            String response = stub.getCipher(id, y, username);
 
             //print the decoded string
-            System.out.println(doubleDecode(response, key));
+            System.out.println(fullDecode(response, key));
 
         } catch (Exception e) {
             System.err.println("Client exception: " + e.toString());

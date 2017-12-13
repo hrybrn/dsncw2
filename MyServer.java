@@ -4,6 +4,7 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.math.BigInteger;
 import java.net.MalformedURLException;
 import java.net.URLClassLoader;
 import java.rmi.registry.LocateRegistry;
@@ -12,10 +13,10 @@ import java.rmi.server.UnicastRemoteObject;
 
 public class MyServer implements LocalInterface{
     private ConcurrentHashMap<Integer, Integer> aValues;
-    private ConcurrentHashMap<Integer, Integer> keys;
-    
-    private static final int g = 1299061;
-    private static final int p = 373587043;
+    private ConcurrentHashMap<Integer, BigInteger> xValues;
+
+    private static final Integer g = 1299061;
+    private static final Integer p = 373587043;
 
     public static void main(String[] args){
         new MyServer();
@@ -30,7 +31,7 @@ public class MyServer implements LocalInterface{
             registry.bind("LocalInterface", stub);
 
             aValues = new ConcurrentHashMap<Integer, Integer>();
-            keys = new ConcurrentHashMap<Integer, Integer>();
+            xValues = new ConcurrentHashMap<Integer, BigInteger>();
 
             System.setProperty( "java.security.policy", "mypolicy" );
             if (System.getSecurityManager() == null) {
@@ -55,31 +56,21 @@ public class MyServer implements LocalInterface{
         //store a
         aValues.put(id, a);
 
-        int x = (int) (Math.pow(g,a) % p);
+        BigInteger x = new BigInteger(g.toString()).pow(a).mod(new BigInteger(p.toString()));
 
-        int[] result = {id,x,g,p};
+        xValues.put(id, x);
+        int[] result = {id,g,p};
         return result;
     }
 
-    public void postY(int id, int y){
-        if(!aValues.containsKey(id) || keys.containsKey(id)){
-            return;
-        }
+    public BigInteger getX(int id){
+        return xValues.get(id);
+    }
 
+    public String getCipher(int id, BigInteger y, String username){
         int a = aValues.get(id);
+        int key = y.pow(a).mod(new BigInteger(p.toString())).intValue();
 
-        int key = (int) (Math.pow(y,a) % p);
-        keys.put(id, key);
-    }
-
-    private Boolean checkKey(int id, int key){
-        return keys.get(id) == key;
-    }
-
-    public String getCipher(int id, int key, String username){
-        if(!checkKey(id, key)){
-            return "";
-        }
         try {
             Registry registry = LocateRegistry.getRegistry("svm-tjn1f15-comp2207.ecs.soton.ac.uk", 12345);
 
